@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { Sparkles, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react'
+import { Sparkles, AlertCircle, ArrowRight, ShieldCheck, FileText, AlignLeft } from 'lucide-react'
 import UploadZone from '../components/UploadZone'
 import { uploadFiles } from '../lib/api'
 
@@ -14,8 +14,10 @@ export default function Upload() {
   const [courseCode, setCourseCode] = useState('')
   const [subjectName, setSubjectName] = useState('')
 
-  // Files
+  // Files & Syllabus
+  const [syllabusMode, setSyllabusMode] = useState<'pdf' | 'text'>('pdf')
   const [syllabusFiles, setSyllabusFiles] = useState<File[]>([])
+  const [syllabusText, setSyllabusText] = useState('')
   const [pyqFiles, setPyqFiles] = useState<File[]>([])
   const [pyqYears, setPyqYears] = useState<{ [filename: string]: number }>({})
 
@@ -37,8 +39,13 @@ export default function Upload() {
       return
     }
 
-    if (syllabusFiles.length === 0) {
+    if (syllabusMode === 'pdf' && syllabusFiles.length === 0) {
       setError('Please upload the official Syllabus PDF for this subject.')
+      return
+    }
+
+    if (syllabusMode === 'text' && !syllabusText.trim()) {
+      setError('Please enter or paste the syllabus text content for this subject.')
       return
     }
 
@@ -56,8 +63,12 @@ export default function Upload() {
       formData.append('course_code', courseCode.trim())
       formData.append('subject_name', subjectName.trim())
 
-      // Syllabus
-      formData.append('syllabus', syllabusFiles[0])
+      // Syllabus (either PDF or raw text)
+      if (syllabusMode === 'pdf') {
+        formData.append('syllabus', syllabusFiles[0])
+      } else {
+        formData.append('syllabus_text', syllabusText.trim())
+      }
 
       // PYQs
       const currentYear = new Date().getFullYear()
@@ -178,20 +189,72 @@ export default function Upload() {
           </div>
         </div>
 
-        {/* Section 2: Syllabus PDF */}
+        {/* Section 2: Syllabus Input (PDF or Text) */}
         <div className="card space-y-4">
-          <div className="border-b border-navy-50 pb-2">
-            <h2 className="font-display text-lg font-bold text-navy">2. Official Syllabus Document</h2>
-            <p className="text-xs text-navy-400">Used as the canonical baseline topic universe for matching questions.</p>
+          <div className="border-b border-navy-50 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-lg font-bold text-navy">2. Official Syllabus Input</h2>
+              <p className="text-xs text-navy-400">Choose to upload an official PDF document or paste the text directly.</p>
+            </div>
+
+            {/* Mode Switcher Tabs */}
+            <div className="flex items-center p-1 bg-navy-50 rounded-xl w-fit">
+              <button
+                type="button"
+                onClick={() => setSyllabusMode('pdf')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  syllabusMode === 'pdf' ? 'bg-white text-navy shadow-xs' : 'text-navy-500 hover:text-navy'
+                }`}
+              >
+                <FileText size={13} /> Upload PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setSyllabusMode('text')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  syllabusMode === 'text' ? 'bg-white text-navy shadow-xs' : 'text-navy-500 hover:text-navy'
+                }`}
+              >
+                <AlignLeft size={13} /> Enter as Text
+              </button>
+            </div>
           </div>
 
-          <UploadZone
-            label="Upload Syllabus PDF"
-            description="Upload the official unit/module syllabus published by your university"
-            required
-            files={syllabusFiles}
-            onFilesChange={setSyllabusFiles}
-          />
+          {syllabusMode === 'pdf' ? (
+            <UploadZone
+              label="Upload Syllabus PDF"
+              description="Upload the official unit/module syllabus published by your university"
+              required
+              files={syllabusFiles}
+              onFilesChange={setSyllabusFiles}
+            />
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-navy">
+                  Paste or Type Syllabus Curriculum <span className="text-red-500">*</span>
+                </label>
+                <span className="text-xs text-navy-400">Supports units, modules & topic lists</span>
+              </div>
+              <textarea
+                rows={8}
+                required={syllabusMode === 'text'}
+                placeholder={`Paste your syllabus units and chapters here... For example:
+
+UNIT 1: Database System Concepts and Architecture, Data Models, Schemas and Instances, ER Model, Entity Types, Relationship Types, Weak Entities.
+UNIT 2: Relational Data Model and Relational Database Constraints, Relational Algebra and Relational Calculus, SQL DDL/DML, Nested Queries, Aggregate Functions.
+UNIT 3: Functional Dependencies and Normalization, 1NF, 2NF, 3NF, BCNF, Multi-valued Dependencies and 4NF.
+UNIT 4: Transaction Processing, ACID Properties, Schedules and Serializability, Concurrency Control Protocols (Two-Phase Locking, Timestamp Ordering), Deadlock Handling.
+UNIT 5: Storage and Indexing, Single-Level and Multi-Level Indexing, B-Trees and B+ Trees, Query Optimization Basics.`}
+                value={syllabusText}
+                onChange={(e) => setSyllabusText(e.target.value)}
+                className="w-full p-4 rounded-xl border border-navy-200 text-sm font-normal text-navy placeholder:text-navy-300 focus:outline-none focus:border-navy leading-relaxed bg-white"
+              />
+              <p className="text-[11px] text-navy-400">
+                Tip: You can include Unit I, Unit II, or Module headings — the pattern engine will automatically discover all underlying topics.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Section 3: PYQs Upload */}

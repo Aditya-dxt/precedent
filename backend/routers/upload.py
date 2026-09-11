@@ -44,14 +44,24 @@ async def _run_analysis_pipeline(
     institution: str,
     course: str,
     subject: str,
-    syllabus_path: str,
+    syllabus_path: Optional[str],
+    syllabus_text: Optional[str],
     pyq_paths: list,  # list of (year, path)
 ):
     """Background task: full analysis pipeline with status updates."""
     try:
         # ── Stage 1: Parse Syllabus ────────────────────────────────────────────
-        _update_job(job_id, "parsing", 10, "Parsing syllabus PDF…")
-        syllabus_result = pdf_parser.parse_syllabus(syllabus_path)
+        if syllabus_text and syllabus_text.strip():
+            _update_job(job_id, "parsing", 10, "Parsing syllabus text…")
+            syllabus_result = pdf_parser.parse_syllabus_text(syllabus_text)
+        elif syllabus_path:
+            _update_job(job_id, "parsing", 10, "Parsing syllabus PDF…")
+            syllabus_result = pdf_parser.parse_syllabus(syllabus_path)
+        else:
+            _update_job(job_id, "error", 0, "No syllabus PDF or text provided.",
+                        error="Missing syllabus")
+            return
+
         topics = syllabus_result.get("topics", [])
         if not topics:
             _update_job(job_id, "error", 0, "Could not extract topics from syllabus.",
@@ -121,7 +131,8 @@ async def _run_analysis_pipeline(
     finally:
         # Clean up temp files
         try:
-            os.unlink(syllabus_path)
+            if syllabus_path:
+                os.unlink(syllabus_path)
             for _, p in pyq_paths:
                 os.unlink(p)
         except Exception:
@@ -135,22 +146,28 @@ async def upload_files(
     course_name: str = Form(...),
     course_code: str = Form(...),
     subject_name: str = Form(...),
-    syllabus: UploadFile = File(...),
+    syllabus: Optional[UploadFile] = File(None),
+    syllabus_text: Optional[str] = Form(None),
     pyqs: list[UploadFile] = File(...),
     years: str = Form(...),  # comma-separated years e.g. "2022,2023,2024"
 ):
     """
-    Upload syllabus + PYQ files and start the analysis pipeline.
+    Upload syllabus (PDF or raw text) + PYQ files and start the analysis pipeline.
     Returns a job_id for polling status.
     """
+    if (not syllabus or not syllabus.filename) and (not syllabus_text or not syllabus_text.strip()):
+        raise HTTPException(status_code=400, detail="Please provide either an official syllabus PDF or syllabus text.")
+
     job_id = str(uuid.uuid4())
 
-    # ── Save uploaded files to temp ────────────────────────────────────────────
-    # Syllabus
-    syllabus_suffix = Path(syllabus.filename or "syllabus.pdf").suffix or ".pdf"
-    syllabus_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=syllabus_suffix)
-    syllabus_tmp.write(await syllabus.read())
-    syllabus_tmp.close()
+    # ── Save uploaded syllabus file to temp if provided ───────────────────────
+    syllabus_tmp_path = None
+    if syllabus and syllabus.filename:
+        syllabus_suffix = Path(syllabus.filename or "syllabus.pdf").suffix or ".pdf"
+        syllabus_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=syllabus_suffix)
+        syllabus_tmp.write(await syllabus.read())
+        syllabus_tmp.close()
+        syllabus_tmp_path = syllabus_tmp.name
 
     # PYQs
     year_list = [y.strip() for y in years.split(",")]
@@ -194,7 +211,8 @@ async def upload_files(
         institution=institution_name,
         course=course_name,
         subject=subject_name,
-        syllabus_path=syllabus_tmp.name,
+        syllabus_path=syllabus_tmp_path,
+        syllabus_text=syllabus_text,
         pyq_paths=pyq_paths,
     )
 

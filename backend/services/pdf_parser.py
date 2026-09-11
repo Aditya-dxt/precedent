@@ -60,12 +60,20 @@ def extract_text_from_pdf(path: str) -> str:
 def parse_syllabus(path: str) -> Dict[str, Any]:
     """
     Parse a syllabus PDF and return a list of topic strings.
-    Attempts to detect unit/module structure.
-    Returns: { topics: List[str], units: List[dict], raw_text: str }
     """
     text = extract_text_from_pdf(path)
     if not text.strip():
         return {"topics": [], "units": [], "raw_text": "", "error": "Could not extract text from syllabus PDF. The file may be scanned/image-based."}
+    return parse_syllabus_text(text)
+
+
+def parse_syllabus_text(text: str) -> Dict[str, Any]:
+    """
+    Parse syllabus text directly into topics and units.
+    Returns: { topics: List[str], units: List[dict], raw_text: str }
+    """
+    if not text or not text.strip():
+        return {"topics": [], "units": [], "raw_text": "", "error": "Syllabus text is empty."}
 
     topics = []
     units = []
