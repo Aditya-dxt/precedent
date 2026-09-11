@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-navy: #1B2A4A;
+    --color-gold: #C9922A;
+    --color-offwhite: #F5F3EF;
+  }
+
+  html {
+    background-color: #F5F3EF;
+    color: #1B2A4A;
+    font-family: 'Inter', system-ui, sans-serif;
+    scroll-behavior: smooth;
+  }
+
+  h1, h2, h3 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 600;
+    color: #1B2A4A;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-navy text-white font-medium px-6 py-3 rounded-xl hover:bg-navy-700 transition-all duration-200 shadow-sm hover:shadow-md;
+  }
+
+  .btn-gold {
+    @apply bg-gold text-white font-medium px-6 py-3 rounded-xl hover:bg-gold-600 transition-all duration-200 shadow-sm hover:shadow-md;
+  }
+
+  .btn-outline {
+    @apply border-2 border-navy text-navy font-medium px-6 py-3 rounded-xl hover:bg-navy hover:text-white transition-all duration-200;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl shadow-card p-6 border border-navy-50;
+  }
+
+  .badge-high {
+    @apply bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full;
+  }
+
+  .badge-medium {
+    @apply bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-1 rounded-full;
+  }
+
+  .badge-low {
+    @apply bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F5F3EF;
+}
+::-webkit-scrollbar-thumb {
+  background: #C9D3E8;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #1B2A4A;
+}
