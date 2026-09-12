@@ -180,11 +180,19 @@ async def upload_files(
             year_list.append(str(2020 + len(year_list)))
         year_list = year_list[:len(pyqs)]
 
+    # Read PYQ bytes first (before temp file cleanup wipes them), store for GitHub commit
+    pyq_raw_files = []
     pyq_paths = []
     for i, pyq_file in enumerate(pyqs):
         pyq_suffix = Path(pyq_file.filename or "pyq.pdf").suffix or ".pdf"
+        raw_bytes = await pyq_file.read()
+        pyq_raw_files.append({
+            "year": year_list[i],
+            "filename": pyq_file.filename or f"pyq-{year_list[i]}.pdf",
+            "content": raw_bytes,
+        })
         pyq_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=pyq_suffix)
-        pyq_tmp.write(await pyq_file.read())
+        pyq_tmp.write(raw_bytes)
         pyq_tmp.close()
         pyq_paths.append((year_list[i], pyq_tmp.name))
 
@@ -202,13 +210,14 @@ async def upload_files(
     except Exception as e:
         logger.warning(f"DB record creation failed (non-fatal): {e}")
 
-    # Pre-seed metadata so github.py can retrieve institution/course/subject later
+    # Pre-seed metadata (institution, course, subject, raw PYQ bytes) so github.py can use them
     _jobs[job_id] = {
         "institution": institution_name,
         "course": course_name,
         "subject": subject_name,
+        "pyq_raw_files": pyq_raw_files,   # [{year, filename, content}]
     }
-    # Initialize job status (merges into the pre-seeded dict above)
+    # Initialize job status (merges into pre-seeded dict above)
     _update_job(job_id, "pending", 0, "Upload received, starting analysis…")
 
     # Launch background pipeline

@@ -314,16 +314,19 @@ def _build_subject_readme(
         "## 📁 Directory Structure\n\n",
         "```\n",
         f"{slug_subject}/\n",
-        "├── README.md                          ← You are here\n",
+        "├── README.md                               ← You are here\n",
         "├── analysis/\n",
-        "│   └── topic-predictions.md           ← Full ranked topic matrix\n",
+        "│   └── topic-predictions.md                ← Full AI-generated ranked topic matrix\n",
+        "├── pyqs/\n",
+        "│   └── YYYY-MM-DD-pyq-{year}.pdf            ← Original uploaded PYQ papers (by upload date)\n",
         "└── mock-papers/\n",
+        "    └── YYYY-MM-DD-set-01.pdf               ← AI-generated exam paper (by generation date)\n",
+        "    └── YYYY-MM-DD-set-02.pdf\n",
     ]
-    for i in range(1, num_papers + 1):
-        lines.append(f"    ├── mock-paper-0{i}.pdf              ← Pattern-synthesized exam paper Set 0{i}\n")
     lines += [
         "```\n\n",
         "---\n\n",
+
 
         "## 📊 Quick Stats\n\n",
         "| 🎯 Topics Identified | 🔴 Critical Topics | 📄 Mock Papers | 📅 PYQ Coverage |\n",
@@ -439,6 +442,7 @@ async def publish_to_github(submission_id: str):
 
     # ── Build all content files ────────────────────────────────────────────
     num_papers = len(papers_data)
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")   # e.g. 2026-09-12
 
     topic_predictions_md = _build_topic_predictions_md(
         institution=institution,
@@ -462,13 +466,22 @@ async def publish_to_github(submission_id: str):
         ("README.md", subject_readme_md),
     ]
 
-    # Render and include mock paper PDFs
+    # ── Uploaded PYQ papers → pyqs/ (named by date + exam year) ──────────
+    pyq_raw_files = job.get("pyq_raw_files", [])
+    for pyq in pyq_raw_files:
+        year = pyq.get("year", "unknown")
+        raw = pyq.get("content", b"")
+        if raw:
+            files.append((f"pyqs/{date_str}-pyq-{year}.pdf", raw))
+
+    # ── AI-generated mock papers → mock-papers/ (named by date + set) ────
     for p_idx, p in enumerate(papers_data):
         try:
             paper_obj = MockPaper(**p) if isinstance(p, dict) else p
             pdf_bytes = render_paper_to_pdf(paper_obj)
             if pdf_bytes:
-                files.append((f"mock-papers/mock-paper-0{paper_obj.paper_number}.pdf", pdf_bytes))
+                set_num = f"0{paper_obj.paper_number}"
+                files.append((f"mock-papers/{date_str}-set-{set_num}.pdf", pdf_bytes))
         except Exception as e:
             logger.warning(f"Could not render paper {p_idx + 1} for GitHub commit: {e}")
 
