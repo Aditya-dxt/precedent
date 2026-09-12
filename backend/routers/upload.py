@@ -28,13 +28,16 @@ _jobs: Dict[str, Dict[str, Any]] = {}
 
 
 def _update_job(job_id: str, status: str, progress: int, message: str, result: Any = None, error: str = ""):
-    _jobs[job_id] = {
+    # Merge into existing dict to preserve metadata (institution, course, subject) set at init
+    existing = _jobs.get(job_id, {})
+    existing.update({
         "status": status,
         "progress": progress,
         "stage_message": message,
         "result": result,
         "error": error,
-    }
+    })
+    _jobs[job_id] = existing
 
 
 async def _run_analysis_pipeline(
@@ -199,7 +202,13 @@ async def upload_files(
     except Exception as e:
         logger.warning(f"DB record creation failed (non-fatal): {e}")
 
-    # Initialize job status
+    # Pre-seed metadata so github.py can retrieve institution/course/subject later
+    _jobs[job_id] = {
+        "institution": institution_name,
+        "course": course_name,
+        "subject": subject_name,
+    }
+    # Initialize job status (merges into the pre-seeded dict above)
     _update_job(job_id, "pending", 0, "Upload received, starting analysis…")
 
     # Launch background pipeline
