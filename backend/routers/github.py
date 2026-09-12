@@ -1,77 +1,136 @@
 """
 GitHub Router
 -------------
-Endpoints for publishing to and browsing the Precedent GitHub repository.
+POST /api/publish/{submission_id} — auto-commit analysis artifacts to GitHub.
+GET /api/repository — browse repository hierarchy.
+Resilient: extracts metadata from in-memory job cache first, then Supabase.
 """
 
-import logging
 from fastapi import APIRouter, HTTPException
-from models.schemas import PublishResponse, RepositoryResponse
+from typing import List, Tuple
+from datetime import datetime
+import logging
+
+from models.schemas import PublishResponse, RepositoryResponse, MockPaper
 from services import github_service, supabase_service
+from services.paper_generator import render_paper_to_pdf
 
 logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
 @router.post("/publish/{submission_id}", response_model=PublishResponse)
 async def publish_to_github(submission_id: str):
     """
-    Commit analysis artifacts for a submission to the GitHub repository.
+    Commit analysis artifacts for a submission to the public GitHub repository.
+    Resilient: retrieves institution, course, subject, topics & papers from memory or DB.
     """
-    # Fetch submission + related data
-    try:
-        sub = supabase_service.get_submission(submission_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+    from routers.upload import _jobs
 
-    if not sub:
-        raise HTTPException(status_code=404, detail="Submission not found.")
+    institution = "University Academic Archive"
+    course = "Computer Science and Engineering"
+    subject = "Academic Subject"
+    topics = []
+    papers_data = []
 
-    # For MVP: build topic-predictions.md content from DB
-    try:
-        topics = supabase_service.get_topics(sub["subject_id"])
-    except Exception:
-        topics = []
+    # 1. Retrieve from in-memory analysis job cache
+    job = _jobs.get(submission_id, {})
+    if job:
+        institution = job.get("institution") or institution
+        course = job.get("course") or course
+        subject = job.get("subject") or subject
+        job_result = job.get("result", {})
+        topics = job_result.get("topics", [])
+        papers_data = job_result.get("papers", [])
+
+    # 2. Try Supabase if missing
+    if not topics:
+        try:
+            sub = supabase_service.get_submission(submission_id)
+            if sub:
+                db_topics = supabase_service.get_topics(sub.get("subject_id", submission_id))
+                if db_topics:
+                    topics = db_topics
+        except Exception as e:
+            logger.warning(f"Supabase fetch during publish skipped: {e}")
 
     # Build topic-predictions.md
     md_lines = [
-        "# Precedent — Topic Predictions\n",
-        f"**Subject:** {sub.get('subject_id', 'Unknown')}\n",
-        f"**Analysis Date:** {sub.get('created_at', 'N/A')}\n\n",
-        "## Ranked Topics\n\n",
-        "| Rank | Topic | Frequency Score | Marks Weight |\n",
-        "|------|-------|-----------------|---------------|\n",
+        f"# Precedent — {subject.upper()} Analysis\n\n",
+        f"**Institution:** {institution}  \n",
+        f"**Course:** {course}  \n",
+        f"**Subject:** {subject}  \n",
+        f"**Published Date:** {datetime.utcnow().strftime('%B %d, %Y')}  \n",
+        "**Generated via:** [Precedent Platform](https://precedent.vercel.app)\n\n",
+        "---\n\n",
+        "## 📊 High-Probability Topic Predictions\n\n",
+        "| Rank | Syllabus Topic / Competency | Repeat Frequency | Marks Allocation Weight |\n",
+        "| :---: | :--- | :---: | :---: |\n",
     ]
+
     for i, t in enumerate(topics, 1):
-        freq = f"{t['frequency_score'] * 100:.0f}%"
-        marks = f"{t['marks_weight'] * 100:.0f}%"
-        md_lines.append(f"| {i} | {t['name']} | {freq} | {marks} |\n")
+        name = t.get("name", "") if isinstance(t, dict) else t.name
+        freq_val = t.get("frequency_score", 0.0) if isinstance(t, dict) else t.frequency_score
+        marks_val = t.get("marks_weight", 0.0) if isinstance(t, dict) else t.marks_weight
+        md_lines.append(f"| **{i:02d}** | `{name}` | **{freq_val * 100:.0f}%** | **{marks_val * 100:.0f}%** |\n")
+
+    md_lines.extend([
+        "\n---\n\n",
+        "## 📝 About These Artifacts\n\n",
+        "- Extracted automatically by parsing university syllabi against multi-year Previous Year Question (PYQ) papers.\n",
+        "- Clustered using sentence-transformers dense vector representations to identify true historical recurrences.\n",
+        "- Published under open-access principles for upcoming student batches.\n",
+    ])
 
     md_content = "".join(md_lines).encode("utf-8")
 
-    # Get institution/course/subject names (best-effort)
-    institution = "PSIT College of Engineering"
-    course = "B.Tech CSE"
-    subject = sub.get("subject_id", "Unknown Subject")
+    readme_content = f"""# {subject.upper()}
+### {course} — {institution}
 
-    files = [
+This directory contains verified exam pattern predictions, syllabus competency mappings, and simulated mock examination papers generated by the **Precedent Platform**.
+
+- `analysis/topic-predictions.md` — Ranked topic matrix and repeat frequencies.
+- `mock-papers/` — Pattern-synthesized simulated examination sheets.
+
+*Contributed to Precedent Academic Knowledge Base.*
+""".encode("utf-8")
+
+    files: List[Tuple[str, bytes]] = [
         ("analysis/topic-predictions.md", md_content),
-        ("analysis/README.md", f"# {subject}\n\nAnalysis generated by [Precedent](https://precedent.vercel.app)\n".encode()),
+        ("README.md", readme_content),
     ]
 
+    # Include mock papers as printable PDFs if available
+    for p_idx, p in enumerate(papers_data):
+        try:
+            paper_obj = MockPaper(**p) if isinstance(p, dict) else p
+            pdf_bytes = render_paper_to_pdf(paper_obj)
+            if pdf_bytes:
+                files.append((f"mock-papers/mock-paper-0{paper_obj.paper_number}.pdf", pdf_bytes))
+        except Exception as e:
+            logger.warning(f"Could not render paper {p_idx+1} for GitHub commit: {e}")
+
+    # Commit files to GitHub repository
     result = github_service.commit_analysis(
         institution=institution,
         course=course,
         subject=subject,
         files=files,
-        commit_message=f"feat: add analysis for {subject}",
+        commit_message=f"feat(archive): publish exam pattern analysis and mock papers for {subject}",
     )
 
     if not result.get("success"):
         raise HTTPException(
             status_code=500,
-            detail=f"GitHub publish failed: {result.get('error', 'Unknown error')}"
+            detail=f"GitHub publish failed: {result.get('error', 'Check GITHUB_TOKEN and GITHUB_REPO')}"
         )
+
+    # Best-effort DB status update
+    try:
+        supabase_service.update_submission_status(submission_id, "published", {"github_url": result["github_url"]})
+    except Exception:
+        pass
 
     return PublishResponse(
         success=True,
@@ -86,20 +145,11 @@ async def get_repository():
     """Browse the Precedent GitHub repository tree."""
     try:
         tree = github_service.get_repository_tree()
+        return RepositoryResponse(**tree)
     except Exception as e:
-        logger.error(f"Repository fetch failed: {e}")
-        # Return seeded fallback data so the UI doesn't break
+        logger.error(f"Repository fetch error: {e}")
         return RepositoryResponse(
-            institutions=[
-                {
-                    "name": "PSIT College of Engineering",
-                    "courses": [{"name": "B.Tech CSE", "subjects": [
-                        {"name": "Database Management Systems", "path": "precedent-repository/psit/btech-cse/dbms", "github_url": "#"}
-                    ]}],
-                }
-            ],
-            total_subjects=1,
-            total_institutions=1,
+            institutions=[],
+            total_subjects=0,
+            total_institutions=0,
         )
-
-    return RepositoryResponse(**tree)
