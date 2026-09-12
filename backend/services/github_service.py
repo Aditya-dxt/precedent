@@ -2,31 +2,41 @@
 GitHub Service
 --------------
 Auto-commits analysis artifacts to a structured GitHub repository.
-Uses PyGithub with a service-account PAT.
+Uses PyGithub with a service-account or personal access token.
 """
 
 import os
 import base64
 import logging
 from typing import List, Tuple, Optional
+from dotenv import load_dotenv
 from github import Github, GithubException
+
+# Load env variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-REPO_NAME = os.getenv("GITHUB_REPO", "")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-
 
 def _get_github_repo():
-    """Return the GitHub repo object, or raise if not configured."""
-    if not GITHUB_TOKEN or not REPO_NAME:
+    """Return the GitHub repo object and repo name dynamically."""
+    token = os.getenv("GITHUB_TOKEN", "").strip()
+    repo_name = os.getenv("GITHUB_REPO", "").strip()
+
+    if not token or not repo_name:
+        load_dotenv()
+        token = os.getenv("GITHUB_TOKEN", "").strip()
+        repo_name = os.getenv("GITHUB_REPO", "").strip()
+
+    if not token or not repo_name:
         raise ValueError("GITHUB_TOKEN and GITHUB_REPO env vars must be set for GitHub publishing.")
-    g = Github(GITHUB_TOKEN)
-    return g.get_repo(REPO_NAME)
+
+    g = Github(token)
+    return g.get_repo(repo_name), repo_name
 
 
 def _safe_path(name: str) -> str:
-    """Convert a display name to a safe directory path component."""
+    """Sanitize string for use as a folder name."""
     return name.lower().replace(" ", "-").replace("/", "-").replace("\\", "-")
 
 
@@ -45,7 +55,7 @@ def commit_analysis(
     Returns: { github_url, commit_sha, files_committed }
     """
     try:
-        repo = _get_github_repo()
+        repo, repo_name = _get_github_repo()
         base_path = f"precedent-repository/{_safe_path(institution)}/{_safe_path(course)}/{_safe_path(subject)}"
         committed = []
 
@@ -77,7 +87,7 @@ def commit_analysis(
         commits = repo.get_commits(path=base_path)
         latest_sha = commits[0].sha if commits.totalCount > 0 else "unknown"
 
-        github_url = f"https://github.com/{REPO_NAME}/tree/main/{base_path}"
+        github_url = f"https://github/{repo_name}/tree/main/{base_path}".replace("https://github/", "https://github.com/")
         return {
             "success": True,
             "github_url": github_url,
@@ -102,7 +112,7 @@ def get_repository_tree() -> dict:
     { institutions: [ { name, courses: [ { name, subjects: [ { name, path, github_url } ] } ] } ] }
     """
     try:
-        repo = _get_github_repo()
+        repo, repo_name = _get_github_repo()
         try:
             contents = repo.get_contents("precedent-repository")
         except GithubException:
@@ -111,44 +121,48 @@ def get_repository_tree() -> dict:
         institutions = []
         total_subjects = 0
 
-        for inst_content in contents:
-            if inst_content.type != "dir":
+        # Level 1: Institutions
+        for item in contents:
+            if item.type != "dir":
                 continue
-            inst_name = inst_content.name.replace("-", " ").title()
-            inst_courses = []
+            inst_name = item.name.replace("-", " ").title()
+            courses = []
 
+            # Level 2: Courses
             try:
-                course_contents = repo.get_contents(inst_content.path)
+                course_items = repo.get_contents(item.path)
             except GithubException:
-                continue
+                course_items = []
 
-            for course_content in course_contents:
-                if course_content.type != "dir":
+            for c_item in course_items:
+                if c_item.type != "dir":
                     continue
-                course_name = course_content.name.replace("-", " ").title()
+                c_name = c_item.name.replace("-", " ").title()
                 subjects = []
 
+                # Level 3: Subjects
                 try:
-                    subject_contents = repo.get_contents(course_content.path)
+                    sub_items = repo.get_contents(c_item.path)
                 except GithubException:
-                    continue
+                    sub_items = []
 
-                for subj_content in subject_contents:
-                    if subj_content.type != "dir":
+                for s_item in sub_items:
+                    if s_item.type != "dir":
                         continue
-                    subj_name = subj_content.name.replace("-", " ").title()
+                    s_name = s_item.name.replace("-", " ").title()
+                    github_url = f"https://github.com/{repo_name}/tree/main/{s_item.path}"
                     subjects.append({
-                        "name": subj_name,
-                        "path": subj_content.path,
-                        "github_url": f"https://github.com/{REPO_NAME}/tree/main/{subj_content.path}",
+                        "name": s_name,
+                        "path": s_item.path,
+                        "github_url": github_url,
                     })
                     total_subjects += 1
 
                 if subjects:
-                    inst_courses.append({"name": course_name, "subjects": subjects})
+                    courses.append({"name": c_name, "subjects": subjects})
 
-            if inst_courses:
-                institutions.append({"name": inst_name, "courses": inst_courses})
+            if courses:
+                institutions.append({"name": inst_name, "courses": courses})
 
         return {
             "institutions": institutions,
@@ -158,4 +172,4 @@ def get_repository_tree() -> dict:
 
     except Exception as e:
         logger.error(f"Failed to fetch repository tree: {e}")
-        return {"institutions": [], "total_subjects": 0, "total_institutions": 0, "error": str(e)}
+        return {"institutions": [], "total_subjects": 0, "total_institutions": 0}
