@@ -121,3 +121,5 @@ class RepositoryResponse(BaseModel):
     institutions: List[RepoInstitution]
     total_subjects: int
     total_institutions: int
+    total_papers: int = 0
+    total_pyqs: int = 0

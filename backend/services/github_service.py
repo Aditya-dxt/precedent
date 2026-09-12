@@ -124,63 +124,64 @@ def get_repository_tree() -> dict:
     New structure: root → {Institution Name}/ → {Subject Name}/
     Skips root files (LICENSE, README.md) and any non-directory items.
     Returns:
-      { institutions: [ { name, courses: [ { name, subjects: [ { name, path, github_url } ] } ] } ] }
+      {
+        institutions: [ { name, courses: [ { name, subjects: [ { name, path, github_url } ] } ] } ],
+        total_subjects: int,
+        total_institutions: int,
+        total_papers: int,
+        total_pyqs: int
+      }
     """
-    # Root-level folders that are NOT institutions
-    SKIP_DIRS = {"precedent-repository"}
+    SKIP_DIRS = {"precedent-repository", ".git", ".github"}
 
     try:
         repo, repo_name = _get_github_repo()
         try:
-            root_contents = repo.get_contents("")
+            git_tree = repo.get_git_tree("main", recursive=True)
         except GithubException:
-            return {"institutions": [], "total_subjects": 0, "total_institutions": 0}
+            return {"institutions": [], "total_subjects": 0, "total_institutions": 0, "total_papers": 0, "total_pyqs": 0}
 
-        institutions = []
-        total_subjects = 0
+        inst_map = {}
+        total_papers = 0
+        total_pyqs = 0
 
-        # Level 1: Institution folders at vault root
-        for item in root_contents:
-            if item.type != "dir":
+        for item in git_tree.tree:
+            parts = item.path.split('/')
+            if len(parts) >= 1 and parts[0] in SKIP_DIRS:
                 continue
-            if item.name in SKIP_DIRS or item.name.startswith("."):
-                continue
 
-            inst_name = item.name  # Keep the real name (e.g. "Pranveer Singh Institute of Technology")
-            subjects = []
+            # Count PDF papers (in pyqs/ and mock-papers/)
+            if item.type == 'blob' and item.path.endswith('.pdf'):
+                total_papers += 1
+                if '/pyqs/' in item.path:
+                    total_pyqs += 1
 
-            # Level 2: Subject folders inside institution
-            try:
-                subject_items = repo.get_contents(item.path)
-            except GithubException:
-                subject_items = []
-
-            for s_item in subject_items:
-                if s_item.type != "dir":
-                    continue
-                s_name = s_item.name  # Keep the real subject name
-                github_url = f"https://github.com/{repo_name}/tree/main/{s_item.path}"
-                subjects.append({
-                    "name": s_name,
-                    "path": s_item.path,
-                    "github_url": github_url,
+            # Identify subjects at depth 2 (Institution / Subject)
+            if len(parts) == 2 and item.type == 'tree':
+                inst_name, subj_name = parts[0], parts[1]
+                if inst_name not in inst_map:
+                    inst_map[inst_name] = []
+                inst_map[inst_name].append({
+                    "name": subj_name,
+                    "path": f"{inst_name}/{subj_name}",
+                    "github_url": f"https://github.com/{repo_name}/tree/main/{inst_name}/{subj_name}",
                 })
-                total_subjects += 1
 
-            if subjects:
-                # Wrap in courses list for schema compatibility
-                institutions.append({
-                    "name": inst_name,
-                    "courses": [{"name": inst_name, "subjects": subjects}],
-                })
+        institutions = [
+            {"name": inst, "courses": [{"name": inst, "subjects": subjs}]}
+            for inst, subjs in inst_map.items()
+        ]
 
         return {
             "institutions": institutions,
-            "total_subjects": total_subjects,
+            "total_subjects": sum(len(subjs) for subjs in inst_map.values()),
             "total_institutions": len(institutions),
+            "total_papers": total_papers,
+            "total_pyqs": total_pyqs,
         }
 
     except Exception as e:
         logger.error(f"Failed to fetch repository tree: {e}")
-        return {"institutions": [], "total_subjects": 0, "total_institutions": 0}
+        return {"institutions": [], "total_subjects": 0, "total_institutions": 0, "total_papers": 0, "total_pyqs": 0}
+
 

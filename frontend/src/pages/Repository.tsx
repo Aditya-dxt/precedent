@@ -9,7 +9,7 @@ export default function Repository() {
   const [data, setData] = useState<RepositoryResponse | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [searchQuery, setSearchQuery] = useState<string>('')
-  const [stats, setStats] = useState({ subjects: 0, institutions: 0 })
+  const [stats, setStats] = useState({ subjects: 0, institutions: 0, papers: 0 })
 
   useEffect(() => {
     // 1. Fetch tree from backend
@@ -44,6 +44,7 @@ export default function Repository() {
 
   const totalSubs = data?.total_subjects || stats.subjects || 0
   const totalInsts = data?.total_institutions || stats.institutions || 0
+  const totalPapers = data?.total_papers || stats.papers || 0
 
   return (
     <div className="pt-24 pb-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto space-y-8">
@@ -70,7 +71,7 @@ export default function Repository() {
       </div>
 
       {/* Stats Counters */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card p-4 text-center">
           <p className="text-xs text-navy-400 font-semibold uppercase">Participating Colleges</p>
           <p className="font-display text-2xl sm:text-3xl font-bold text-navy mt-1">
@@ -85,10 +86,10 @@ export default function Repository() {
           </p>
         </div>
 
-        <div className="card p-4 text-center col-span-2 sm:col-span-1">
-          <p className="text-xs text-navy-400 font-semibold uppercase">Storage Layer</p>
-          <p className="font-display text-base font-bold text-navy mt-2 flex items-center justify-center gap-1.5">
-            <Sparkles size={16} className="text-gold" /> Public GitHub Git
+        <div className="card p-4 text-center">
+          <p className="text-xs text-navy-400 font-semibold uppercase">Exam Papers Archived</p>
+          <p className="font-display text-2xl sm:text-3xl font-bold text-navy mt-1">
+            {totalPapers}
           </p>
         </div>
       </div>

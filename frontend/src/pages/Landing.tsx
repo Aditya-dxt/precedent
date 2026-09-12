@@ -6,7 +6,7 @@ import { getRepoStats } from '../lib/api'
 import Footer from '../components/Footer'
 
 export default function Landing() {
-  const [stats, setStats] = useState({ subjects: 0, institutions: 0 })
+  const [stats, setStats] = useState({ subjects: 0, institutions: 0, papers: 0 })
 
   useEffect(() => {
     getRepoStats().then(setStats)
@@ -74,13 +74,18 @@ export default function Landing() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.4 }}
-            className="mt-12 inline-flex items-center gap-6 px-6 py-3 rounded-2xl bg-white border border-navy-100 shadow-card text-xs text-navy-600"
+            className="mt-12 inline-flex flex-wrap items-center justify-center gap-4 sm:gap-6 px-6 py-3 rounded-2xl bg-white border border-navy-100 shadow-card text-xs text-navy-600"
           >
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-green-500" />
               <span className="font-semibold text-navy">{stats.subjects}</span> Subjects Analyzed
             </div>
-            <div className="h-4 w-[1px] bg-navy-100" />
+            <div className="h-4 w-[1px] bg-navy-100 hidden sm:block" />
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-gold" />
+              <span className="font-semibold text-navy">{stats.papers}</span> Papers Analyzed
+            </div>
+            <div className="h-4 w-[1px] bg-navy-100 hidden sm:block" />
             <div className="flex items-center gap-2">
               <span className="font-semibold text-navy">{stats.institutions}</span> Partner Institutions
             </div>

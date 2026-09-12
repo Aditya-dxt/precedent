@@ -112,4 +112,6 @@ export interface RepositoryResponse {
   institutions: RepoInstitution[]
   total_subjects: number
   total_institutions: number
+  total_papers?: number
+  total_pyqs?: number
 }

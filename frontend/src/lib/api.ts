@@ -69,26 +69,61 @@ export async function getRepository(): Promise<RepositoryResponse> {
 
 const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || ''
 
-export async function getRepoStats(): Promise<{ subjects: number; institutions: number }> {
-  if (!GITHUB_REPO) return { subjects: 0, institutions: 0 }
+export async function getRepoStats(): Promise<{ subjects: number; institutions: number; papers: number }> {
+  // 1. Try local backend first (has authenticated GitHub API token)
+  try {
+    const res = await getRepository()
+    if (res && (res.total_subjects > 0 || res.total_institutions > 0)) {
+      return {
+        subjects: res.total_subjects,
+        institutions: res.total_institutions,
+        papers: res.total_papers || res.total_pyqs || 0,
+      }
+    }
+  } catch {
+    // Fall back to direct GitHub public API
+  }
+
+  // 2. Direct GitHub public tree API fallback
+  if (!GITHUB_REPO) return { subjects: 0, institutions: 0, papers: 0 }
   try {
     const { data } = await axios.get(
       `https://api.github.com/repos/${GITHUB_REPO}/git/trees/main?recursive=1`,
       { timeout: 10_000 }
     )
     const tree: { path: string; type: string }[] = data.tree || []
-    // Count unique institution dirs (depth 2) and subject dirs (depth 4)
     const institutions = new Set<string>()
     const subjects = new Set<string>()
+    let papers = 0
+
+    const SKIP = new Set(['precedent-repository', '.git', '.github'])
+
     for (const node of tree) {
       const parts = node.path.split('/')
-      if (parts[0] === 'precedent-repository') {
-        if (parts.length === 2 && node.type === 'tree') institutions.add(parts[1])
-        if (parts.length === 4 && node.type === 'tree') subjects.add(node.path)
+      if (parts[0] && SKIP.has(parts[0])) continue
+
+      // Count PDF papers (PYQs and generated mock papers)
+      if (node.type === 'blob' && node.path.endsWith('.pdf')) {
+        papers++
+      }
+
+      // Root-level directory = Institution
+      if (parts.length === 1 && node.type === 'tree') {
+        institutions.add(parts[0])
+      }
+      // Depth-2 directory = Subject
+      if (parts.length === 2 && node.type === 'tree') {
+        institutions.add(parts[0])
+        subjects.add(`${parts[0]}/${parts[1]}`)
       }
     }
-    return { subjects: subjects.size, institutions: institutions.size }
+    return {
+      subjects: subjects.size,
+      institutions: institutions.size,
+      papers,
+    }
   } catch {
-    return { subjects: 0, institutions: 0 }
+    return { subjects: 0, institutions: 0, papers: 0 }
   }
 }
+
