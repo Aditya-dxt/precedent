@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type {
   SubmissionResponse, StatusResponse, PlannerResponse,
-  MockPapersResponse, PublishResponse, RepositoryResponse,
+  MockPapersResponse, PublishResponse, RepositoryResponse, TopicItem,
 } from './types'
 
 const BASE = import.meta.env.VITE_API_URL || ''
@@ -31,11 +31,13 @@ export async function createRevisionPlan(
   subject_id: string,
   days_available: number,
   hours_per_day: number,
+  topics?: TopicItem[],
 ): Promise<PlannerResponse> {
   const { data } = await api.post<PlannerResponse>('/api/planner', {
     subject_id,
     days_available,
     hours_per_day,
+    topics,
   })
   return data
 }

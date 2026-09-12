@@ -56,18 +56,34 @@ export default function RevisionPlanner() {
 
     try {
       // First check if cached in session storage from initial upload pipeline
+      let cachedTopics: TopicItem[] | undefined = undefined
       const cached = sessionStorage.getItem(`precedent_result_${subjectId}`)
-      if (cached && days === 7 && hours === 4.0) {
-        const parsed = JSON.parse(cached)
-        if (parsed.plan) {
-          setPlan(parsed.plan)
-          setLoading(false)
-          setRecalculating(false)
-          return
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached)
+          if (parsed.topics && Array.isArray(parsed.topics)) {
+            cachedTopics = parsed.topics
+          }
+          if (days === 7 && hours === 4.0 && parsed.plan) {
+            setPlan(parsed.plan)
+            setLoading(false)
+            setRecalculating(false)
+            return
+          }
+        } catch (e) {
+          console.error(e)
         }
       }
 
-      const res = await createRevisionPlan(subjectId, days, hours)
+      // If already have topics in current active plan, use them as fallback
+      if (!cachedTopics && plan && plan.days) {
+        const existing = plan.days.flatMap(d => d.topics)
+        if (existing.length > 0) {
+          cachedTopics = existing
+        }
+      }
+
+      const res = await createRevisionPlan(subjectId, days, hours, cachedTopics)
       setPlan(res)
     } catch (err: any) {
       console.error(err)

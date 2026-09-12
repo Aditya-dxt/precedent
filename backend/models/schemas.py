@@ -51,6 +51,7 @@ class PlannerRequest(BaseModel):
     subject_id: str
     days_available: int
     hours_per_day: float
+    topics: Optional[List[TopicItem]] = None
 
 class DayPlan(BaseModel):
     day: int
