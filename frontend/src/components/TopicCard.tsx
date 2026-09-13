@@ -36,7 +36,7 @@ export default function TopicCard({ topic, rank, totalYears, style }: TopicCardP
             <p className="text-xs text-navy-400 mt-0.5">
               {topic.appeared_in_years.length > 0
                 ? `Appeared in: ${topic.appeared_in_years.join(', ')}`
-                : 'Pattern detected from questions'}
+                : 'Syllabus Core Topic'}
             </p>
           </div>
         </div>

@@ -143,15 +143,16 @@ def analyze_patterns(
 
 
 def _build_default_topics(topics: List[str], total_years: int) -> List[TopicItem]:
-    """Default topic scoring when no question texts are available."""
+    """Balanced topic scoring when no question texts are available."""
     res = []
-    for i, t in enumerate(topics):
-        weight = max(0.9 - (i * 0.05), 0.3)
+    baseline = 0.25
+    for t in topics:
         res.append(TopicItem(
             name=t,
-            frequency_score=round(weight, 2),
-            marks_weight=round(weight, 2),
+            frequency_score=baseline,
+            marks_weight=baseline,
             appeared_in_years=[],
             prep_time_hrs=2.0,
         ))
     return res
+
